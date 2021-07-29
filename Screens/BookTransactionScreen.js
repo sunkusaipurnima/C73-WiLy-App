@@ -33,13 +33,17 @@ const BookTransactionScreen = (props) => {
   const [returnState, setReturnState] = useState("normal");
 
   const handleTransactions = async (state) => {
+    console.log("inside handle transactions", state);
+    // Getting book details with the bookId
+    var bookDetails, studentDetails, lastTransaction;
     var bookDetailsRef = await db.collection("books").doc(bookId).get();
-    var bookDetails, studentDetails;
     if (bookDetailsRef) {
       bookDetails = await bookDetailsRef.data();
     } else {
       Alert.alert("Book does not exist in database");
     }
+
+    // Getting student details from firestore using studentId
     var studentDetailsRef = await db
       .collection("students")
       .doc(studentId)
@@ -49,7 +53,29 @@ const BookTransactionScreen = (props) => {
     } else {
       Alert.alert("Student Id does not exist in database");
     }
+
+    // Getting the last transaction details based on bookId and studentId
+
+    await db
+      .collection("transactions")
+      .where("book_id", "==", bookId)
+      .where("student_id", "==", studentId)
+      .limit(1)
+      .get()
+      .then((querySnapshot) => {
+        querySnapshot.forEach((doc) => {
+          //console.log("document", doc.data());
+          lastTransaction = doc.data();
+        });
+      })
+      .catch(() => {
+        console.log("error while getting last transaction", error);
+      });
+
+    console.log("lastTransaction", lastTransaction.student_id);
+
     console.log("bookDetails,studentDetails", bookDetails, studentDetails);
+
     if (state === "submitClicked") {
       console.log("inside submit state clicked");
       if (studentDetails.number_of_books_issued < 2) {
@@ -58,39 +84,24 @@ const BookTransactionScreen = (props) => {
       } else Alert.alert("Exceeds student Limit,so cant issue the book");
     } else if (state === "returnClicked") {
       console.log("inside return clicked ");
-      var lastTransactionStudentId;
-      db.collection("transactions")
-        .where("book_id", "==", bookId)
-        .orderBy("date", "desc")
-        .limit(1)
-        .get()
-        .then((snapshot) => {
-          snapshot.map((doc) => {
-            console.log("snapshot", doc.data());
-            var lastTransaction = doc.data();
-            lastTransactionStudentId = lastTransation.student_id;
-          });
-        })
-        .catch(() => {
-          console.log("Error in getting last transaction details", error);
-        });
 
       initiateBookReturn(
         bookDetails.book_name,
         studentDetails.student_name,
-        lastTransactionStudentId
+        lastTransaction.student_id
       );
     }
   };
 
-  const initiateBookReturn = (
+  const initiateBookReturn = async (
     bookName,
     studentName,
     lastTransactionStudentId
   ) => {
     if (lastTransactionStudentId === studentId) {
       console.log("return condition satisfied");
-      db.collection("transactions")
+      await db
+        .collection("transactions")
         .add({
           student_id: studentId,
           book_id: bookId,
@@ -110,7 +121,8 @@ const BookTransactionScreen = (props) => {
           );
         });
       //change the book availability status
-      db.collection("books")
+      await db
+        .collection("books")
         .doc(bookId)
         .update({ is_book_available: true })
         .then(() => {
@@ -128,7 +140,8 @@ const BookTransactionScreen = (props) => {
 
       // change number of books issued to the student
 
-      db.collection("students")
+      await db
+        .collection("students")
         .doc(studentId)
         .update({
           number_of_books_issued: firebase.firestore.FieldValue.increment(-1),
